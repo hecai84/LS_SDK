@@ -2,8 +2,8 @@
  * @Description: 
  * @Author: hecai
  * @Date: 2021-09-02 23:14:51
- * @LastEditTime: 2022-01-11 01:27:46
- * @FilePath: \ls_ble_sdk\dev\project\ble\ble_uart_server\app_config.h
+ * @LastEditTime: 2023-02-09 15:09:45
+ * @FilePath: \ble\ble_lock\app_config.h
  */
 #ifndef APP_CONFIG_H_
 #define APP_CONFIG_H_
@@ -16,5 +16,7 @@
 #define DEBUG_MODE 0
 
 #define SDK_HCLK_MHZ   (16)
+
+#define SDK_SW_TIMER_MAX 10
 
 #endif
