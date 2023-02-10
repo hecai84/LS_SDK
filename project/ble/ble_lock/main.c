@@ -243,30 +243,30 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
             if (pos != NULL)
             {
                 procTime = atoi((const char *)(para + 1));
-                if(procTime>5000)
-                    procTime = 5000;
+                if(procTime>10000)
+                    procTime = 10000;
                 waitTime = atoi((const char *)(pos + 1));  
-                if(waitTime>5000)
-                    waitTime = 5000;
+                if(waitTime>10000)
+                    waitTime = 10000;
                 pos = (u8 *)strstr((const char *)(pos + 1), ",");
                 if(pos != NULL)
                     returnTime = atoi((const char *)(pos + 1));
                 else
                     returnTime = procTime;
                 
-                if(returnTime>5000)
-                    returnTime = 5000;
+                if(returnTime>10000)
+                    returnTime = 10000;
                 
 
                 if (para[0] == '+')
                 {
-                    openDoor(procTime, waitTime,returnTime); //
                     gatt_manager_server_send_notification(connect_id, handle, "OK", strlen("OK"), NULL);
+                    openDoor(procTime, waitTime,returnTime); //
                 }
                 else if (para[0] == '-')
                 {
-                    openDoor(-procTime, waitTime,returnTime); //
                     gatt_manager_server_send_notification(connect_id, handle, "OK", strlen("OK"), NULL);
+                    openDoor(-procTime, waitTime,returnTime); //
                 }
                 else
                 {
