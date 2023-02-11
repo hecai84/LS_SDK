@@ -2,8 +2,8 @@
  * @Description:
  * @Author: hecai
  * @Date: 2021-09-16 10:44:14
- * @LastEditTime: 2022-02-15 10:07:40
- * @FilePath: \ls_ble_sdk\dev\project\ble\ble_uart_server\Tools.c
+ * @LastEditTime: 2023-02-11 14:28:14
+ * @FilePath: \ble\ble_lock\Tools.c
  */
 #include "Tools.h"
 #include "lscrypt.h"
@@ -244,7 +244,7 @@ void SetLedBlue(LED_STATE state)
 {
     if (state == LED_TWINK)
     {
-        twinkBlueTimes = 6;
+        twinkBlueTimes = 10;
         LOG_I("SetLedBlue TWINK");
         if (led_timer_blue == NULL)
             led_timer_blue = builtin_timer_create(toggleBlue);

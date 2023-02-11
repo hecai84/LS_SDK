@@ -2,7 +2,7 @@
  * @Description:
  * @Author: hecai
  * @Date: 2021-09-14 15:27:57
- * @LastEditTime: 2023-02-10 22:27:02
+ * @LastEditTime: 2023-02-11 14:19:40
  * @FilePath: \ble\ble_lock\Motor.c
  */
 #include "Motor.h"
@@ -18,11 +18,12 @@
 
 // static struct builtin_timer *motor_timer_inst_stop = NULL;
 // static struct builtin_timer *motor_timer_inst_close = NULL;
-// static struct builtin_timer *motor_timer_inst_finish = NULL;
+static struct builtin_timer *motor_timer_inst = NULL;
 static bool foward = true;
 // bool isWorking = false;
-static u16 processTime = 0;
-// u16 returnTime = 0;
+static u16 openTime = 0;
+static u16 pauseTime = 0;
+static u16 closeTime = 0;
 
 void initMotor(void)
 {
@@ -52,7 +53,7 @@ void initMotor(void)
 //     {
 //         io_write_pin(IN1, 1);
 //     }
-    
+
 //     //定时关闭
 //     builtin_timer_stop(motor_timer_inst_stop);
 //     builtin_timer_start(motor_timer_inst_stop, returnTime, NULL);
@@ -66,45 +67,57 @@ void initMotor(void)
 //     UpdateBattery();
 // }
 
-void openDoor(int procTime,int waitTime,int reTime)
+void startMotor(void *param)
 {
-    LOG_I("procTime:%d waitTime:%d",procTime,waitTime,reTime);
-    if (procTime > 0)
-    {
-        foward = true;
-        processTime = procTime;
-    }
-    else
-    {
-        foward = false;
-        processTime = -procTime;
-    }
     uint32_t cpu_stat = enter_critical();
     LOG_I("openDoor");
-    //正转
+    // 正转
     io_write_pin(IN1, 0);
     io_write_pin(IN2, 0);
     if (foward)
         io_write_pin(IN1, 1);
     else
         io_write_pin(IN2, 1);
-    DELAY_US(processTime * 1000);
-    //停机
+    DELAY_US(openTime * 1000);
+    // 停机
     io_write_pin(IN1, 0);
     io_write_pin(IN2, 0);
-    DELAY_US(waitTime * 1000);
-    //反转
+    DELAY_US(pauseTime * 1000);
+    // 反转
     if (foward)
         io_write_pin(IN2, 1);
     else
         io_write_pin(IN1, 1);
-    DELAY_US(reTime * 1000);
-    //停机
+    DELAY_US(closeTime * 1000);
+    // 停机
     io_write_pin(IN1, 0);
     io_write_pin(IN2, 0);
     exit_critical(cpu_stat);
 }
 
+void openDoor(int procTime, int waitTime, int reTime)
+{
+    LOG_I("procTime:%d waitTime:%d", procTime, waitTime, reTime);
+    if (procTime > 0)
+    {
+        foward = true;
+        openTime = procTime;
+    }
+    else
+    {
+        foward = false;
+        openTime = -procTime;
+    }
+    pauseTime = waitTime;
+    closeTime = reTime;
+
+    if (motor_timer_inst == NULL)
+        motor_timer_inst = builtin_timer_create(startMotor);
+    
+    
+    builtin_timer_stop(motor_timer_inst);
+    builtin_timer_start(motor_timer_inst, 500, NULL);
+}
 
 // void openDoor1(int procTime,int waitTime,int reTime)
 // {
