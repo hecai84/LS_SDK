@@ -7,3 +7,5 @@ _build/
 *.uvguix.*
 *.map
 project/ble/.vscode/
+project/ble/.history/
+project/ble/ble_lock_adapter/.history/
