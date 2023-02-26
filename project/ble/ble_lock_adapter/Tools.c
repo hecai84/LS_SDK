@@ -107,6 +107,7 @@ void longPress(void *param)
     {
         LOG_I("longPress");
         SetLedBlue(LED_TWINK);
+        SetLedRed(LED_CLOSE);
         memcpy(pw, DEFAULT_PW, 16);
         LOG_I("new pw:%s", pw);
         memset(lastTime, 0, 11);

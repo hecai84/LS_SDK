@@ -51,6 +51,10 @@ static const uint8_t ls_rx_char_uuid_128[] = {0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5
 static const uint8_t ls_tx_char_uuid_128[] = {0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0, 0x93, 0xf3, 0xa3, 0xb5, 0x03, 0x00, 0x40, 0x6e};
 static const uint8_t att_decl_char_array[] = {0x03, 0x28};
 static const uint8_t att_desc_client_char_cfg_array[] = {0x02, 0x29};
+extern u8 buff[];
+u16 curHandle=0;
+u8 curConid = 0;
+
 enum uart_svc_att_db_handles
 {
     UART_SVC_IDX_RX_CHAR,
@@ -71,7 +75,7 @@ static const struct att_decl ls_uart_server_att_decl[UART_SVC_ATT_NUM] =
             .char_prop.rd_en = 1,
         },
         [UART_SVC_IDX_RX_VAL] = {
-            .uuid = ls_uart_rx_char_uuid_128,
+            .uuid = ls_rx_char_uuid_128,
             .s.max_len = UART_SVC_RX_MAX_LEN,
             .s.uuid_len = UUID_LEN_128BIT,
             .s.read_indication = 1,
@@ -86,7 +90,7 @@ static const struct att_decl ls_uart_server_att_decl[UART_SVC_ATT_NUM] =
             .char_prop.rd_en = 1,
         },
         [UART_SVC_IDX_TX_VAL] = {
-            .uuid = ls_uart_tx_char_uuid_128,
+            .uuid = ls_tx_char_uuid_128,
             .s.max_len = UART_SVC_TX_MAX_LEN,
             .s.uuid_len = UUID_LEN_128BIT,
             .s.read_indication = 1,
@@ -103,7 +107,7 @@ static const struct att_decl ls_uart_server_att_decl[UART_SVC_ATT_NUM] =
 };
 static const struct svc_decl ls_uart_server_svc =
     {
-        .uuid = ls_uart_svc_uuid_128,
+        .uuid = ls_svc_uuid_128,
         .att = (struct att_decl *)ls_uart_server_att_decl,
         .nb_att = UART_SVC_ATT_NUM,
         .uuid_len = UUID_LEN_128BIT,
@@ -117,7 +121,6 @@ enum uart_rx_status
     UART_RECEIVING,
 };
 static bool uart_tx_busy;
-static uint8_t *next_connect_addr;
 static uint8_t dev_addr_type = 0; /*  0:Public, 1:Private */
 static struct gatt_svc_env ls_uart_server_svc_env;
 // static uint8_t connected_num = 0;
@@ -133,6 +136,7 @@ static uint16_t cccd_config_array[UART_SERVER_MASTER_NUM];
 
 static SLAVE_DATA slave_array[MAX_SLAVE];
 uint8_t slaveCount;
+SLAVE_DATA * curSlave;
 /************************************************data for client*****************************************************/
 enum initiator_status
 {
@@ -185,7 +189,6 @@ static void ls_uart_client_char_rx_dis(uint8_t con_idx);
 static void ls_uart_client_char_desc_dis(uint8_t con_idx);
 static void ls_uart_client_send_write_req(void);
 
-char *sendData = "";
 
 static uint8_t search_conidx(uint8_t con_idx)
 {
@@ -256,7 +259,7 @@ static void ls_uart_server_init(uint8_t idx)
 static void ls_uart_server_timer_cb(void *param)
 {
     // ls_uart_server_send_notification();
-    // ls_uart_client_send_write_req();
+    ls_uart_client_send_write_req();
     if (uart_server_timer_inst)
     {
         builtin_timer_start(uart_server_timer_inst, UART_SERVER_TIMEOUT, NULL);
@@ -320,13 +323,25 @@ static void ls_uart_client_recv_ntf_ind(uint8_t handle, uint8_t con_idx, uint16_
 }
 static void ls_uart_client_send_write_req(void)
 {
-    for (uint8_t idx = 0; idx < UART_CLIENT_NUM; idx++)
+    u8 test[]="045072000049ba59abbe56e057A:OPEN;P:+500,2000,500;";
+    // u8 test[] = {0x24,0x60,0x44,0x0C,0xD9,0xD1,0xDE,0xD5,0xFB,0xAD,0xDD,0xDD,0x4F,0x31,0x0A,0xAC,0x3E,0x75,0xD8,0x4A,0x7B,0x8B,0x89,0xEA,0xBA,0x10,0xDC,0x1D,0x6A,0x31,0xF4,0xAD,0xE2,0x70,0x2F,0xF8,0x48,0xDB,0xD3,0xC5,0x21,0x86,0xF3,0x1E,0x93,0xB7,0xB0,0xDB,0xB8,0xE1,0xF0,0xF0,0x75,0x60,0x8B,0x1B,0xB0,0x1D,0xAC,0x0E,0xC3,0x48,0xEB,0xDB};
+    u8 len = sizeof(test);
+    if(curHandle)
     {
-        uint8_t con_idx = con_idx_client_array[idx];
+        LOG_I("ls_uart_client_send_write_req");
         uint32_t cpu_stat = enter_critical();
-        gatt_manager_client_write_no_rsp(con_idx, uart_client_rx_pointer_handle[idx], (uint8_t *)sendData, strlen(sendData));
+        //gatt_manager_client_write_no_rsp(con_idx, uart_client_rx_pointer_handle[idx], (uint8_t *)sendData, strlen(sendData));
+            
+            encodeInfo(test, strlen(test));
+            
+            if(len%16>0)
+            {
+                len = (len / 16 + 1) * 16;
+            }
+            gatt_manager_client_write_no_rsp(curConid, curHandle, buff, len);
+            curHandle = 0;
 
-        exit_critical(cpu_stat);
+            exit_critical(cpu_stat);
     }
 }
 
@@ -447,7 +462,7 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
         LOG_I("svc dis notification, length = %d", evt->client_recv_notify_indicate.length);
         break;
     case CLIENT_PRIMARY_SVC_DIS_IND:
-        if (!memcmp(evt->client_svc_disc_indicate.uuid, ls_uart_svc_uuid_128, sizeof(ls_uart_svc_uuid_128)))
+        if (!memcmp(evt->client_svc_disc_indicate.uuid, ls_svc_uuid_128, sizeof(ls_svc_uuid_128)))
         {
             uart_client_svc_attribute_handle[array_idx] = evt->client_svc_disc_indicate.handle_range.begin_handle;
             uart_client_svc_end_handle[array_idx] = evt->client_svc_disc_indicate.handle_range.end_handle;
@@ -460,18 +475,20 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
         }
         break;
     case CLIENT_CHAR_DIS_BY_UUID_IND:
-        if (!memcmp(evt->client_disc_char_indicate.uuid, ls_uart_tx_char_uuid_128, sizeof(ls_uart_tx_char_uuid_128)))
+        if (!memcmp(evt->client_disc_char_indicate.uuid, ls_tx_char_uuid_128, sizeof(ls_tx_char_uuid_128)))
         {
             uart_client_tx_attribute_handle[array_idx] = evt->client_disc_char_indicate.attr_handle;
             uart_client_tx_pointer_handle[array_idx] = evt->client_disc_char_indicate.pointer_handle;
             ls_uart_client_char_rx_dis(con_idx);
             LOG_I("tx dis success, attribute handle = %d, pointer handler = %d", uart_client_tx_attribute_handle[array_idx], uart_client_tx_pointer_handle[array_idx]);
         }
-        else if (!memcmp(evt->client_disc_char_indicate.uuid, ls_uart_rx_char_uuid_128, sizeof(ls_uart_rx_char_uuid_128)))
+        else if (!memcmp(evt->client_disc_char_indicate.uuid, ls_rx_char_uuid_128, sizeof(ls_rx_char_uuid_128)))
         {
             uart_client_rx_attribute_handle[array_idx] = evt->client_disc_char_indicate.attr_handle;
             uart_client_rx_pointer_handle[array_idx] = evt->client_disc_char_indicate.pointer_handle;
-            ls_uart_client_char_desc_dis(con_idx);
+            // ls_uart_client_char_desc_dis(con_idx);
+            curHandle = uart_client_rx_pointer_handle[array_idx];
+            curConid = con_idx;
             LOG_I("rx dis success, attribute handle = %d, pointer handler = %d", uart_client_rx_attribute_handle[array_idx], uart_client_rx_pointer_handle[array_idx]);
         }
         else
@@ -521,21 +538,21 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
 
 static void ls_uart_client_service_dis(uint8_t con_idx)
 {
-    gatt_manager_client_svc_discover_by_uuid(con_idx, (uint8_t *)&ls_uart_svc_uuid_128[0], UUID_LEN_128BIT, 1, 0xffff);
+    gatt_manager_client_svc_discover_by_uuid(con_idx, (uint8_t *)&ls_svc_uuid_128[0], UUID_LEN_128BIT, 1, 0xffff);
 }
 
 static void ls_uart_client_char_tx_dis(uint8_t con_idx)
 {
     uint8_t array_idx = search_client_conidx(con_idx);
     LS_ASSERT(array_idx != 0xff);
-    gatt_manager_client_char_discover_by_uuid(con_idx, (uint8_t *)&ls_uart_tx_char_uuid_128[0], UUID_LEN_128BIT, uart_client_svc_attribute_handle[array_idx], uart_client_svc_end_handle[array_idx]);
+    gatt_manager_client_char_discover_by_uuid(con_idx, (uint8_t *)&ls_tx_char_uuid_128[0], UUID_LEN_128BIT, uart_client_svc_attribute_handle[array_idx], uart_client_svc_end_handle[array_idx]);
 }
 
 static void ls_uart_client_char_rx_dis(uint8_t con_idx)
 {
     uint8_t array_idx = search_client_conidx(con_idx);
     LS_ASSERT(array_idx != 0xff);
-    gatt_manager_client_char_discover_by_uuid(con_idx, (uint8_t *)&ls_uart_rx_char_uuid_128[0], UUID_LEN_128BIT, uart_client_svc_attribute_handle[array_idx], uart_client_svc_end_handle[array_idx]);
+    gatt_manager_client_char_discover_by_uuid(con_idx, (uint8_t *)&ls_rx_char_uuid_128[0], UUID_LEN_128BIT, uart_client_svc_attribute_handle[array_idx], uart_client_svc_end_handle[array_idx]);
 }
 
 static void ls_uart_client_char_desc_dis(uint8_t con_idx)
@@ -611,7 +628,7 @@ static void start_scan(void)
     dev_manager_start_scan(scan_obj_hdl, &scan_param);
     LOG_I("start scan");
 }
-` static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
+static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
 {
     switch (type)
     {
@@ -663,17 +680,17 @@ static void start_scan(void)
         create_init_obj();
         break;
     case SCAN_STOPPED:
-        LOG_I("scan stopped, next_connect_addr=%d", next_connect_addr);
-        if (next_connect_addr)
+        if (curSlave)
         {
-            start_init(next_connect_addr);
-            next_connect_addr = 0;
+            LOG_I("scan stopped, connect");
+            start_init(curSlave->mac);
             init_status = INIT_BUSY;
         }
         break;
     case ADV_REPORT:
-
-        if (!memcmp(peer_slave_addr0, evt->adv_report.adv_addr->addr, BLE_ADDR_LEN))
+        curSlave = search_slave(evt->adv_report.adv_addr->addr);
+        
+        if(curSlave)
         {
             LOG_I("adv received, addr: %2x:%2x:%2x:%2x:%2x:%2x", evt->adv_report.adv_addr->addr[5],
                   evt->adv_report.adv_addr->addr[4],
@@ -681,14 +698,12 @@ static void start_scan(void)
                   evt->adv_report.adv_addr->addr[2],
                   evt->adv_report.adv_addr->addr[1],
                   evt->adv_report.adv_addr->addr[0]);
-            if (init_obj_hdl != 0xff && init_status == INIT_IDLE && next_connect_addr == 0)
+            if (init_obj_hdl != 0xff && init_status == INIT_IDLE )
             {
-                next_connect_addr = (uint8_t *)&peer_slave_addr0[0];
                 dev_addr_type = evt->adv_report.adv_addr_type;
                 dev_manager_stop_scan(scan_obj_hdl);
             }
         }
-
         break;
     case INIT_OBJ_CREATED:
         LS_ASSERT(evt->obj_created.status == 0);
@@ -697,15 +712,9 @@ static void start_scan(void)
     case INIT_STOPPED:
         init_status = INIT_IDLE;
         LOG_I("init stopped");
-        if (uart_client_connected_num == UART_CLIENT_NUM)
-        {
-            next_connect_addr = 0;
-            dev_manager_stop_scan(scan_obj_hdl);
-        }
-        else
-        {
-            start_scan();
-        }
+        curSlave->flag = 0xff;
+        curSlave = NULL;
+        start_scan();
         break;
     default:
 
