@@ -202,10 +202,11 @@ static uint8_t search_conidx(uint8_t con_idx)
 static SLAVE_DATA *search_slave(uint8_t *addr)
 {
     uint8_t i;
+    LOG_I("search_slave");
     for (i = 0; i < slaveCount; i++)
     {
         if (slave_array[i].flag != 0xff &&
-            !memcmp(slave_array[i].mac, addr, BLE_ADDR_LEN))
+            memcmp(slave_array[i].mac, addr, BLE_ADDR_LEN)==0)
         {
             return &slave_array[i];
         }
@@ -255,7 +256,7 @@ static void ls_uart_server_init(uint8_t idx)
 static void ls_uart_server_timer_cb(void *param)
 {
     // ls_uart_server_send_notification();
-    ls_uart_client_send_write_req();
+    //ls_uart_client_send_write_req();
     if (uart_server_timer_inst)
     {
         builtin_timer_start(uart_server_timer_inst, UART_SERVER_TIMEOUT, NULL);
@@ -334,7 +335,8 @@ static void ls_uart_client_send_write_req(void)
     u8 * data;
     u8 len;
     // u8 test[] = {0x24,0x60,0x44,0x0C,0xD9,0xD1,0xDE,0xD5,0xFB,0xAD,0xDD,0xDD,0x4F,0x31,0x0A,0xAC,0x3E,0x75,0xD8,0x4A,0x7B,0x8B,0x89,0xEA,0xBA,0x10,0xDC,0x1D,0x6A,0x31,0xF4,0xAD,0xE2,0x70,0x2F,0xF8,0x48,0xDB,0xD3,0xC5,0x21,0x86,0xF3,0x1E,0x93,0xB7,0xB0,0xDB,0xB8,0xE1,0xF0,0xF0,0x75,0x60,0x8B,0x1B,0xB0,0x1D,0xAC,0x0E,0xC3,0x48,0xEB,0xDB};
-    if(curHandle && curSlave)
+
+    if(curHandle && curSlave!=NULL)
     {
         LOG_I("ls_uart_client_send_write_req");
         uint32_t cpu_stat = enter_critical();
@@ -485,6 +487,7 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
             uart_client_tx_pointer_handle[array_idx] = evt->client_disc_char_indicate.pointer_handle;
             ls_uart_client_char_rx_dis(con_idx);
             LOG_I("tx dis success, attribute handle = %d, pointer handler = %d", uart_client_tx_attribute_handle[array_idx], uart_client_tx_pointer_handle[array_idx]);
+            
         }
         else if (!memcmp(evt->client_disc_char_indicate.uuid, ls_rx_char_uuid_128, sizeof(ls_rx_char_uuid_128)))
         {
@@ -493,7 +496,8 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
             // ls_uart_client_char_desc_dis(con_idx);
             curHandle = uart_client_rx_pointer_handle[array_idx];
             curConid = con_idx;
-            LOG_I("rx dis success, attribute handle = %d, pointer handler = %d", uart_client_rx_attribute_handle[array_idx], uart_client_rx_pointer_handle[array_idx]);
+            LOG_I("rx dis success, attribute handle = %d, pointer handler = %d,slave=%d", uart_client_rx_attribute_handle[array_idx], uart_client_rx_pointer_handle[array_idx],curSlave);
+            ls_uart_client_send_write_req();
         }
         else
         {
@@ -698,20 +702,22 @@ static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
         }
         break;
     case ADV_REPORT:
-        curSlave = search_slave(evt->adv_report.adv_addr->addr);
-        
-        if(curSlave)
+        if(curSlave==NULL)
         {
-            LOG_I("adv received, addr: %2x:%2x:%2x:%2x:%2x:%2x", evt->adv_report.adv_addr->addr[5],
-                  evt->adv_report.adv_addr->addr[4],
-                  evt->adv_report.adv_addr->addr[3],
-                  evt->adv_report.adv_addr->addr[2],
-                  evt->adv_report.adv_addr->addr[1],
-                  evt->adv_report.adv_addr->addr[0]);
-            if (init_obj_hdl != 0xff && init_status == INIT_IDLE )
+            curSlave = search_slave(evt->adv_report.adv_addr->addr);
+            if(curSlave)
             {
-                dev_addr_type = evt->adv_report.adv_addr_type;
-                dev_manager_stop_scan(scan_obj_hdl);
+                LOG_I("adv received, addr: %02X:%02X:%02X:%02X:%02X:%02X", evt->adv_report.adv_addr->addr[5],
+                        evt->adv_report.adv_addr->addr[4],
+                        evt->adv_report.adv_addr->addr[3],
+                        evt->adv_report.adv_addr->addr[2],
+                        evt->adv_report.adv_addr->addr[1],
+                        evt->adv_report.adv_addr->addr[0]);            
+                if (init_obj_hdl != 0xff && init_status == INIT_IDLE )
+                {
+                    dev_addr_type = evt->adv_report.adv_addr_type;
+                    dev_manager_stop_scan(scan_obj_hdl);
+                }
             }
         }
         break;
