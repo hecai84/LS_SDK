@@ -1,4 +1,3 @@
-#define LOG_TAG "MAIN"
 #include "main.h"
 #include "ls_ble.h"
 #include "platform.h"
@@ -42,9 +41,6 @@
 #define DISCONNECTED_MSG_PATTERN 0xdead
 #define DISCONNECTED_MSG_PATTERN_LEN 2
 
-static const uint8_t peer_slave_addr0[BLE_ADDR_LEN] = {0xae, 0x2a, 0xb8, 0x43, 0x69, 0xef};
-static const uint8_t peer_slave_addr1[BLE_ADDR_LEN] = {0x02, 0xcc, 0xcc, 0xcc, 0xcc, 0xaa};
-static const uint8_t peer_slave_addr2[BLE_ADDR_LEN] = {0x03, 0xcc, 0xcc, 0xcc, 0xcc, 0xaa};
 
 static const uint8_t ls_svc_uuid_128[] = {0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0, 0x93, 0xf3, 0xa3, 0xb5, 0x01, 0x00, 0x40, 0x6e};
 static const uint8_t ls_rx_char_uuid_128[] = {0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0, 0x93, 0xf3, 0xa3, 0xb5, 0x02, 0x00, 0x40, 0x6e};
@@ -134,7 +130,7 @@ static uint16_t uart_server_mtu_array[UART_SERVER_MASTER_NUM];
 static uint8_t con_idx_array[UART_SERVER_MASTER_NUM];
 static uint16_t cccd_config_array[UART_SERVER_MASTER_NUM];
 
-static SLAVE_DATA slave_array[MAX_SLAVE];
+SLAVE_DATA slave_array[MAX_SLAVE];
 uint8_t slaveCount;
 SLAVE_DATA * curSlave;
 /************************************************data for client*****************************************************/
@@ -177,7 +173,7 @@ static uint8_t init_status = INIT_IDLE;
 static void ls_uart_server_init(uint8_t idx);
 static void ls_uart_server_timer_cb(void *param);
 static void ls_uart_server_read_req_ind(uint8_t att_idx, uint8_t con_idx);
-static void ls_uart_server_write_req_ind(uint8_t att_idx, uint8_t con_idx, uint16_t length, uint8_t const *value);
+static void ls_uart_server_write_req_ind(uint8_t att_idx, uint8_t con_idx, uint16_t length,const uint8_t *value);
 static void ls_uart_server_send_notification(void);
 static void start_adv(void);
 
@@ -206,9 +202,9 @@ static uint8_t search_conidx(uint8_t con_idx)
 static SLAVE_DATA *search_slave(uint8_t *addr)
 {
     uint8_t i;
-    for (i = 0; i < MAX_SLAVE; i++)
+    for (i = 0; i < slaveCount; i++)
     {
-        if (slave_array[i].flag != 0 && slave_array[i].flag != 0xff &&
+        if (slave_array[i].flag != 0xff &&
             !memcmp(slave_array[i].mac, addr, BLE_ADDR_LEN))
         {
             return &slave_array[i];
@@ -277,9 +273,21 @@ static void ls_uart_server_read_req_ind(uint8_t att_idx, uint8_t con_idx)
         gatt_manager_server_read_req_reply(con_idx, handle, 0, (void *)&cccd_config_array[array_idx], 2);
     }
 }
-
-static void ls_uart_server_write_req_ind(uint8_t att_idx, uint8_t con_idx, uint16_t length, uint8_t const *value)
+/**
+ * @description: 接收主机发送的消息
+ * @param {uint8_t} att_idx
+ * @param {uint8_t} con_idx
+ * @param {uint16_t} length
+ * @return {*}
+ */
+static void ls_uart_server_write_req_ind(uint8_t att_idx, uint8_t con_idx, uint16_t length,const uint8_t *value)
 {
+    LOG_I("rec %d", length);
+    //一个锁的相关数据总共21个字节
+    if(length>0 && length%21==0&& length/21 <=MAX_SLAVE)
+    {
+        saveSlave(value, length);
+    }
 }
 static void ls_uart_server_send_notification(void)
 {
@@ -323,25 +331,21 @@ static void ls_uart_client_recv_ntf_ind(uint8_t handle, uint8_t con_idx, uint16_
 }
 static void ls_uart_client_send_write_req(void)
 {
-    u8 test[]="045072000049ba59abbe56e057A:OPEN;P:+500,2000,500;";
+    u8 * data;
+    u8 len;
     // u8 test[] = {0x24,0x60,0x44,0x0C,0xD9,0xD1,0xDE,0xD5,0xFB,0xAD,0xDD,0xDD,0x4F,0x31,0x0A,0xAC,0x3E,0x75,0xD8,0x4A,0x7B,0x8B,0x89,0xEA,0xBA,0x10,0xDC,0x1D,0x6A,0x31,0xF4,0xAD,0xE2,0x70,0x2F,0xF8,0x48,0xDB,0xD3,0xC5,0x21,0x86,0xF3,0x1E,0x93,0xB7,0xB0,0xDB,0xB8,0xE1,0xF0,0xF0,0x75,0x60,0x8B,0x1B,0xB0,0x1D,0xAC,0x0E,0xC3,0x48,0xEB,0xDB};
-    u8 len = sizeof(test);
-    if(curHandle)
+    if(curHandle && curSlave)
     {
         LOG_I("ls_uart_client_send_write_req");
         uint32_t cpu_stat = enter_critical();
         //gatt_manager_client_write_no_rsp(con_idx, uart_client_rx_pointer_handle[idx], (uint8_t *)sendData, strlen(sendData));
-            
-            encodeInfo(test, strlen(test));
-            
-            if(len%16>0)
-            {
-                len = (len / 16 + 1) * 16;
-            }
-            gatt_manager_client_write_no_rsp(curConid, curHandle, buff, len);
-            curHandle = 0;
+        encodeSlave(curSlave, &data, &len);
 
-            exit_critical(cpu_stat);
+        gatt_manager_client_write_no_rsp(curConid, curHandle, data, len);
+        curHandle = 0;
+        curSlave->flag = 0xff;
+        curSlave = NULL;
+        exit_critical(cpu_stat);
     }
 }
 
@@ -582,10 +586,13 @@ static void create_adv_obj()
 }
 static void start_adv(void)
 {
-    LS_ASSERT(adv_obj_hdl != 0xff);
-    uint8_t adv_data_length = ADV_DATA_PACK(advertising_data, 1, GAP_ADV_TYPE_SHORTENED_NAME, UART_SVC_ADV_NAME, sizeof(UART_SVC_ADV_NAME));
-    dev_manager_start_adv(adv_obj_hdl, advertising_data, adv_data_length, scan_response_data, 0);
-    LOG_I("adv start");
+    if(slaveCount==0 || io_read_pin(BT) == 0)
+    {
+        LS_ASSERT(adv_obj_hdl != 0xff);
+        uint8_t adv_data_length = ADV_DATA_PACK(advertising_data, 1, GAP_ADV_TYPE_SHORTENED_NAME, UART_SVC_ADV_NAME, sizeof(UART_SVC_ADV_NAME));
+        dev_manager_start_adv(adv_obj_hdl, advertising_data, adv_data_length, scan_response_data, 0);
+        LOG_I("adv start");
+    }
 }
 static void create_scan_obj(void)
 {
@@ -616,17 +623,20 @@ static void start_init(uint8_t *peer_addr)
 }
 static void start_scan(void)
 {
-    struct start_scan_param scan_param = {
-        .scan_intv = 0x4000,
-        .scan_window = 0x4000,
-        .duration = 0,
-        .period = 0,
-        .type = OBSERVER,
-        .active = 0,
-        .filter_duplicates = 0,
-    };
-    dev_manager_start_scan(scan_obj_hdl, &scan_param);
-    LOG_I("start scan");
+    if(slaveCount>0)
+    {
+        struct start_scan_param scan_param = {
+            .scan_intv = 0x4000,
+            .scan_window = 0x4000,
+            .duration = 0,
+            .period = 0,
+            .type = OBSERVER,
+            .active = 0,
+            .filter_duplicates = 0,
+        };
+        dev_manager_start_scan(scan_obj_hdl, &scan_param);
+        LOG_I("start scan");
+    }
 }
 static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
 {
@@ -650,7 +660,7 @@ static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
         LOG_HEX(addr, sizeof(addr));
         dev_manager_add_service((struct svc_decl *)&ls_uart_server_svc);
         ls_uart_server_init(0xff);
-        encodeInfo("163948687749ba59abbe56e057A:OPEN;P:+2000;", strlen("163948687749ba59abbe56e057A:OPEN;P:+2000;"));
+        //encodeInfo("163948687749ba59abbe56e057A:OPEN;P:+2000;", strlen("163948687749ba59abbe56e057A:OPEN;P:+2000;"));
     }
     break;
     case SERVICE_ADDED:
@@ -712,8 +722,6 @@ static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
     case INIT_STOPPED:
         init_status = INIT_IDLE;
         LOG_I("init stopped");
-        curSlave->flag = 0xff;
-        curSlave = NULL;
         start_scan();
         break;
     default:
@@ -725,7 +733,8 @@ static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
 int main()
 {
     sys_init_app();
-    loadSlave(slave_array, &slaveCount);
+    initFlash();
+    loadSlave(slave_array,&slaveCount);
     ble_init();
     dev_manager_init(dev_manager_callback);
     gap_manager_init(gap_manager_callback);

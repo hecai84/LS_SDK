@@ -16,17 +16,6 @@ uint8_t plaintext_buff[64];
 extern u8 pw[];
 extern u8 lastTime[];
 
-#define BT PB15
-#define CHRG PA00
-#define LED_RED PA14
-#define LED_BLUE PA13
-#define TWINK_BLUE_TIME 500
-#define TWINK_RED_TIME1 500
-#define TWINK_RED_TIME2 1500
-#define LONGPRESS_TIME 3000
-#define CHRG_OVERTIME 500
-#define REFRESH_VBAT_TIME 60000
-
 static struct builtin_timer *led_timer_blue = NULL;
 static struct builtin_timer *led_timer_red = NULL;
 static struct builtin_timer *click_timer = NULL;

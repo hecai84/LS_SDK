@@ -2,7 +2,7 @@
  * @Description: 
  * @Author: hecai
  * @Date: 2021-11-02 23:24:40
- * @LastEditTime: 2023-02-20 09:57:29
+ * @LastEditTime: 2023-03-10 00:02:58
  * @FilePath: \ble\ble_lock_adapter\flash.c
  */
 #include "tinyfs.h"
@@ -10,6 +10,7 @@
 #include "log.h"
 #include "string.h"
 
+extern SLAVE_DATA slave_array[];
 tinyfs_dir_t ble_at_dir;
 
 void initFlash()
@@ -39,36 +40,42 @@ void readFlash(uint16_t recode_name, uint8_t *data, uint16_t *len)
     }
 }
 
-void loadSlave(SLAVE_DATA *data, uint8_t *len)
-{
-    //测试数据
-    data[0].mac[0] = 0xae;
-    data[0].mac[1] = 0x2a;
-    data[0].mac[2] = 0xb8;
-    data[0].mac[3] = 0x43;
-    data[0].mac[4] = 0x69;
-    data[0].mac[5] = 0xef;
-    memcpy(data[0].pw, "49ba59abbe56e057", 16);
-    data[0].flag = 1;
-    data[0].openTime = 600;
-    data[0].waitTime = 2000;
-    data[0].closeTime = 600;
-    *len = 1;
 
-    // uint16_t srcLen;
-    // uint8_t size = sizeof(SLAVE_DATA);
-    // readFlash(REOCDE_SLAVE, (uint8_t *)data, &srcLen);
-    // if(srcLen>0 && srcLen%size==0)
-    // {
-    //     *len = srcLen / size;
-    // }else
-    // {
-    //     *len = 0;
-    // }
-}
-void saveSlave(SLAVE_DATA *data,uint8_t len)
+void clearSlaveArray()
 {
-    uint8_t size = sizeof(SLAVE_DATA);
-    writeFlash(REOCDE_SLAVE, (uint8_t *)data, len * size);
+    memset(slave_array, 0, sizeof(SLAVE_DATA) * MAX_SLAVE);
+}
+
+
+void loadSlave(SLAVE_DATA *data,uint8_t * len)
+{
+    uint16_t srcLen;
+    uint8_t i;
+    uint8_t buff[120];
+    readFlash(REOCDE_SLAVE, buff, &srcLen);
+    LOG_I("readFlash:%d", srcLen);
+    if(srcLen%21==0)
+    {
+        *len = srcLen / 21;
+        for (i = 0; i < *len;i++)
+        {
+            memcpy(data[i].mac, buff+21*i, BLE_ADDR_LEN);
+            LOG_I("mac:%02X-%02X-%02X-%02X-%02X-%02X", 
+                data[i].mac[0],data[i].mac[1],data[i].mac[2],data[i].mac[3],data[i].mac[4],data[i].mac[5]);
+            memcpy(data[i].pw, buff+21*i+BLE_ADDR_LEN, 8);
+            memcpy(&data[i].flag, buff+21*i+14, 1);
+            memcpy(&data[i].openTime, buff+21*i+15, 2);
+            memcpy(&data[i].waitTime, buff+21*i+17, 2);
+            memcpy(&data[i].closeTime, buff+21*i+19, 2);
+        }
+    }else
+        *len = 0;
+}
+void saveSlave(const uint8_t *data,uint8_t len)
+{
+    uint8_t buff[120];
+    memcpy(buff, data, len);
+    writeFlash(REOCDE_SLAVE, buff, len);
+    LOG_I("writeFlash");
 }
 

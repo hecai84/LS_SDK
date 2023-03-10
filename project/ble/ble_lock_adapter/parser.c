@@ -2,7 +2,7 @@
  * @Description:
  * @Author: hecai
  * @Date: 2021-11-02 10:00:47
- * @LastEditTime: 2023-02-19 00:17:28
+ * @LastEditTime: 2023-03-10 17:09:51
  * @FilePath: \ble\ble_lock_adapter\parser.c
  */
 #include "parser.h"
@@ -65,6 +65,26 @@ void decodeInfo(const u8 *dat, u8 len)
         }
     }
     crypt_deinit();
+}
+
+void encodeSlave(SLAVE_DATA * slave,u8 ** dat,u8 * len)
+{
+    char info[64];
+    char attr='+';
+    if(slave->flag)
+        attr = '-';
+    sprintf(info, "0450720000%02x%02x%02x%02x%02x%02x%02x%02xA:OPEN;P:%c%d,%d,%d",
+            slave->pw[0], slave->pw[1], slave->pw[2], slave->pw[3],
+            slave->pw[4], slave->pw[5], slave->pw[6], slave->pw[7],
+            attr,slave->openTime,slave->waitTime,slave->closeTime);
+    LOG_I("%s",info);
+
+    encodeInfo((u8*)info, strlen(info));
+    *dat = buff;
+    if(strlen(info)%16>0)
+        *len = (strlen(info) / 16 + 1) * 16;
+    else
+        *len = strlen(info);
 }
 
 void encodeInfo(const u8 *dat,u8 len)
