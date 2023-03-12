@@ -10,6 +10,7 @@
 #include "lsadc.h"
 #include <string.h>
 #include "flash.h"
+#include "main.h"
 /**buff**/
 uint8_t ciphertext_buff[64];
 uint8_t plaintext_buff[64];
@@ -26,6 +27,7 @@ volatile uint8_t recv_flag = 1;
 ADC_HandleTypeDef hadc;
 u8 battery = 5;
 u8 redState = 1;
+u8 blueState = LED_CLOSE;
 #include "main.h"
 
 void Error_Handler(void);
@@ -95,12 +97,10 @@ void longPress(void *param)
     if (io_read_pin(BT) == 0)
     {
         LOG_I("longPress");
-        SetLedBlue(LED_TWINK);
-        SetLedRed(LED_CLOSE);
-        memcpy(pw, DEFAULT_PW, 16);
-        LOG_I("new pw:%s", pw);
-        memset(lastTime, 0, 11);
-        writeFlash(RECODE_PW, pw, 16);
+        if(blueState==LED_CLOSE)
+        {
+            start_adv();
+        }
     }
 }
 void chrgcheck(void *param)
@@ -232,6 +232,7 @@ void SetLedRed(LED_STATE state)
 
 void SetLedBlue(LED_STATE state)
 {
+    blueState = state;
     if (state == LED_TWINK)
     {
         twinkBlueTimes = 6;

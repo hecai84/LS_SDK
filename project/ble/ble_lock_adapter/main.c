@@ -175,7 +175,6 @@ static void ls_uart_server_timer_cb(void *param);
 static void ls_uart_server_read_req_ind(uint8_t att_idx, uint8_t con_idx);
 static void ls_uart_server_write_req_ind(uint8_t att_idx, uint8_t con_idx, uint16_t length,const uint8_t *value);
 static void ls_uart_server_send_notification(void);
-static void start_adv(void);
 
 static void start_scan(void);
 
@@ -202,7 +201,6 @@ static uint8_t search_conidx(uint8_t con_idx)
 static SLAVE_DATA *search_slave(uint8_t *addr)
 {
     uint8_t i;
-    LOG_I("search_slave");
     for (i = 0; i < slaveCount; i++)
     {
         if (slave_array[i].flag != 0xff &&
@@ -342,11 +340,9 @@ static void ls_uart_client_send_write_req(void)
         uint32_t cpu_stat = enter_critical();
         //gatt_manager_client_write_no_rsp(con_idx, uart_client_rx_pointer_handle[idx], (uint8_t *)sendData, strlen(sendData));
         encodeSlave(curSlave, &data, &len);
-
+        curSlave->flag = 0xff;
         gatt_manager_client_write_no_rsp(curConid, curHandle, data, len);
         curHandle = 0;
-        curSlave->flag = 0xff;
-        curSlave = NULL;
         exit_critical(cpu_stat);
     }
 }
@@ -402,8 +398,8 @@ static void gap_manager_callback(enum gap_evt_type type, union gap_evt_u *evt, u
             uart_client_connected_num--;
             if (uart_client_connected_num < UART_CLIENT_NUM)
             {
-                start_scan();
                 init_status = INIT_IDLE;
+                start_scan();
             }
         }
         else
@@ -464,7 +460,7 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
         LOG_I("mtu exch ind, mtu = %d", evt->mtu_changed_ind.mtu);
         break;
     case CLIENT_RECV_NOTIFICATION:
-        ls_uart_client_recv_ntf_ind(evt->client_recv_notify_indicate.handle, con_idx, evt->client_recv_notify_indicate.length, evt->client_recv_notify_indicate.value);
+        //ls_uart_client_recv_ntf_ind(evt->client_recv_notify_indicate.handle, con_idx, evt->client_recv_notify_indicate.length, evt->client_recv_notify_indicate.value);
         LOG_I("svc dis notification, length = %d", evt->client_recv_notify_indicate.length);
         break;
     case CLIENT_PRIMARY_SVC_DIS_IND:
@@ -532,6 +528,8 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
             LS_ASSERT(gap_manager_get_role(con_idx) == LS_BLE_ROLE_MASTER);
             uart_client_wr_cmd_done_array[array_idx] = true;
             LOG_I("write no rsp success");
+            curSlave = NULL;
+            // dev_manager_stop_init(init_obj_hdl);
         }
         else
         {
@@ -588,15 +586,13 @@ static void create_adv_obj()
     };
     dev_manager_create_legacy_adv_object(&adv_param);
 }
-static void start_adv(void)
+void start_adv(void)
 {
-    if(slaveCount==0 || io_read_pin(BT) == 0)
-    {
-        LS_ASSERT(adv_obj_hdl != 0xff);
-        uint8_t adv_data_length = ADV_DATA_PACK(advertising_data, 1, GAP_ADV_TYPE_SHORTENED_NAME, UART_SVC_ADV_NAME, sizeof(UART_SVC_ADV_NAME));
-        dev_manager_start_adv(adv_obj_hdl, advertising_data, adv_data_length, scan_response_data, 0);
-        LOG_I("adv start");
-    }
+    LS_ASSERT(adv_obj_hdl != 0xff);
+    uint8_t adv_data_length = ADV_DATA_PACK(advertising_data, 1, GAP_ADV_TYPE_SHORTENED_NAME, UART_SVC_ADV_NAME, sizeof(UART_SVC_ADV_NAME));
+    dev_manager_start_adv(adv_obj_hdl, advertising_data, adv_data_length, scan_response_data, 0);
+    LOG_I("adv start");
+    SetLedBlue(LED_OPEN);
 }
 static void create_scan_obj(void)
 {
@@ -672,22 +668,27 @@ static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
         create_adv_obj();
         break;
     case ADV_OBJ_CREATED:
+        LOG_I("ADV_OBJ_CREATED");
         LS_ASSERT(evt->obj_created.status == 0);
         adv_obj_hdl = evt->obj_created.handle;
-        start_adv();
+        //没有设备的时候默认打开adv
+        if(slaveCount==0)
+            start_adv();
         if (scan_obj_hdl == 0xff)
         {
             create_scan_obj();
         }
         break;
     case ADV_STOPPED:
-        LOG_I("adv stopped, uart_server_connected_num = %d", uart_server_connected_num);
-        if (uart_server_connected_num < UART_SERVER_MASTER_NUM)
-        {
-            start_adv();
-        }
+        LOG_I("ADV_STOPPED");
+        // LOG_I("adv stopped, uart_server_connected_num = %d", uart_server_connected_num);
+        // if (uart_server_connected_num < UART_SERVER_MASTER_NUM)
+        // {
+        //     start_adv();
+        // }
         break;
     case SCAN_OBJ_CREATED:
+        LOG_I("SCAN_OBJ_CREATED");
         LS_ASSERT(evt->obj_created.status == 0);
         scan_obj_hdl = evt->obj_created.handle;
         start_scan();
@@ -728,7 +729,7 @@ static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
     case INIT_STOPPED:
         init_status = INIT_IDLE;
         LOG_I("init stopped");
-        start_scan();
+        // start_scan();
         break;
     default:
 
@@ -739,6 +740,8 @@ static void dev_manager_callback(enum dev_evt_type type, union dev_evt_u *evt)
 int main()
 {
     sys_init_app();
+    initLed();
+    initExti();
     initFlash();
     loadSlave(slave_array,&slaveCount);
     ble_init();
