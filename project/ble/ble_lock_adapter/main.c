@@ -281,12 +281,17 @@ static void ls_uart_server_read_req_ind(uint8_t att_idx, uint8_t con_idx)
  */
 static void ls_uart_server_write_req_ind(uint8_t att_idx, uint8_t con_idx, uint16_t length,const uint8_t *value)
 {
-    LOG_I("rec %d", length);
     //一个锁的相关数据总共21个字节
+    uint16_t  handle = gatt_manager_get_svc_att_handle(&ls_uart_server_svc_env, UART_SVC_IDX_TX_VAL);
+    LOG_I("rec %d", length);
     if(length>0 && length%21==0&& length/21 <=MAX_SLAVE)
     {
-        saveSlave(value, length);
+        if(saveSlave(value, length)==TINYFS_NO_ERROR){
+            gatt_manager_server_send_notification(con_idx, handle, "OK", strlen("OK"), NULL);
+            return;
+        }
     }
+    gatt_manager_server_send_notification(con_idx, handle, "ERROR", strlen("ERROR"), NULL);
 }
 static void ls_uart_server_send_notification(void)
 {

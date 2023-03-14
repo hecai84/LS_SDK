@@ -5,7 +5,6 @@
  * @LastEditTime: 2023-03-11 00:08:06
  * @FilePath: \ble\ble_lock_adapter\flash.c
  */
-#include "tinyfs.h"
 #include "flash.h"
 #include "log.h"
 #include "string.h"
@@ -79,11 +78,11 @@ void loadSlave(SLAVE_DATA *data,uint8_t * len)
     }else
         *len = 0;
 }
-void saveSlave(const uint8_t *data,uint8_t len)
+uint8_t saveSlave(const uint8_t *data,uint8_t len)
 {
     uint8_t buff[120];
-    memcpy(buff, data, len);
-    writeFlash(REOCDE_SLAVE, buff, len);
     LOG_I("writeFlash");
+    memcpy(buff, data, len);
+    return writeFlash(REOCDE_SLAVE, buff, len);
 }
 

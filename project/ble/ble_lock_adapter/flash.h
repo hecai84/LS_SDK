@@ -9,6 +9,7 @@
 #define __FLASH_H__
 
 #include <stddef.h>
+#include "tinyfs.h"
 #include "ls_ble.h"
 
 #define MAX_SLAVE 5
@@ -32,6 +33,6 @@ void initFlash(void);
 uint8_t writeFlash(uint16_t recode_name,uint8_t *data, uint16_t len);
 void readFlash(uint16_t recode_name, uint8_t *data, uint16_t *len);
 void loadSlave(SLAVE_DATA *data,uint8_t * len);
-void saveSlave(const uint8_t *data,uint8_t len);
+uint8_t saveSlave(const uint8_t *data,uint8_t len);
 #endif
 
