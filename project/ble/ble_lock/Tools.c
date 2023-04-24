@@ -2,7 +2,7 @@
  * @Description:
  * @Author: hecai
  * @Date: 2021-09-16 10:44:14
- * @LastEditTime: 2023-02-11 14:28:14
+ * @LastEditTime: 2023-04-12 00:29:40
  * @FilePath: \ble\ble_lock\Tools.c
  */
 #include "Tools.h"
@@ -10,6 +10,7 @@
 #include "lsadc.h"
 #include <string.h>
 #include "flash.h"
+#include "platform.h"
 /**buff**/
 uint8_t ciphertext_buff[64];
 uint8_t plaintext_buff[64];
@@ -34,6 +35,7 @@ static struct builtin_timer *chrg_timer = NULL;
 static u8 twinkRedTimes;
 static u8 twinkBlueTimes;
 volatile uint8_t recv_flag = 1;
+static uint16_t adc_value;
 ADC_HandleTypeDef hadc;
 u8 battery = 5;
 u8 redState = 1;
@@ -130,87 +132,17 @@ void chrgcheck(void *param)
     }
 }
 
-void lsadc_init(void)
+/** Common config  */
+static void lsadc_init(void)
 {
-    /** Common config  */
-    hadc.Instance = LSADC;
-    hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-    hadc.Init.ScanConvMode = ADC_SCAN_DISABLE; /* Sequencer disabled (ADC conversion on only 1 channel: channel set on rank 1) */
-    hadc.Init.NbrOfConversion = 1;             /* Parameter discarded because sequencer is disabled */
-    hadc.Init.DiscontinuousConvMode = DISABLE; /* Parameter discarded because sequencer is disabled */
-    hadc.Init.NbrOfDiscConversion = 1;         /* Parameter discarded because sequencer is disabled */
-
-    hadc.Init.ContinuousConvMode = ENABLE;           /* Continuous mode to have maximum conversion speed (no delay between conversions) */
-    hadc.Init.TrigType = ADC_REGULAR_SOFTWARE_TRIGT; /* Trig of conversion start done by which event */
-    hadc.Init.Vref = ADC_VREF_INSIDE;
 }
 
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *h)
+void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
-    u16 value;
-    // 1400/4095*6
-    value = HAL_ADC_GetValue(h) * 2.051;
-    LOG_I("battery:%d", value);
-    if (value < 3200)
-    {
-        LOG_I("twink red");
-        SetLedRed(LED_TWINK);
-    }
-    else if (io_read_pin(CHRG) != 0)
-    {
-        SetLedRed(LED_CLOSE);
-    }
-    // 3*1400*adc_value/4095
-    if (value > 3950)
-        battery = 5;
-    else if (value > 3800)
-        battery = 4;
-    else if (value > 3600)
-        battery = 3;
-    else if (value > 3400)
-        battery = 2;
-    else
-        battery = 1;
+    adc_value = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
     recv_flag = 1;
-    adc12b_in6_io_deinit();
-    HAL_ADC_Stop_IT(h); // close adc per
-    HAL_ADC_DeInit(h);
-    //如果电量有变化，重新检查是否有变化
 }
 
-void UpdateBattery(void)
-{
-    if (1)
-    {
-        if (HAL_ADC_Init(&hadc) != HAL_OK)
-        {
-            LOG_I("HAL_ADC_Init error");
-            Error_Handler();
-        }
-
-        ADC_ChannelConfTypeDef sConfig = {0};
-        /**
-         * Configure Regular Channel
-         */
-        sConfig.Channel = ADC_CHANNEL_6;
-        sConfig.Rank = ADC_REGULAR_RANK_1;
-        sConfig.SamplingTime = 0x00000002U;
-        if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-        {
-            Error_Handler();
-        }
-        adc12b_in6_io_init();
-        recv_flag = 0;
-        LOG_I("HAL_ADC_Start_IT");
-        HAL_ADC_Start_IT(&hadc);
-    }
-
-    // if (recv_flag == 1)
-    // {
-    //     recv_flag = 0;
-    //     HAL_ADC_Start_IT(&hadc);
-    // }
-}
 
 void SetLedRed(LED_STATE state)
 {
@@ -285,7 +217,7 @@ void io_exti_callback(uint8_t pin)
         break;
     case CHRG:
         LOG_I("charging");
-        battery=6;
+        battery = 6;
         updateAdv();
         SetLedRed(LED_OPEN);
         if (chrg_timer == NULL)
@@ -299,6 +231,72 @@ void io_exti_callback(uint8_t pin)
         break;
     }
 }
+
+
+
+void UpdateBattery(void)
+{
+    uint16_t value;
+    hadc.Instance = LSADC;
+    hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+    hadc.Init.ScanConvMode = ADC_SCAN_DISABLE;        /* Sequencer disabled (ADC conversion on only 1 channel: channel set on rank 1) */
+    hadc.Init.NbrOfConversion = 1;                    /* Parameter discarded because sequencer is disabled */
+    hadc.Init.DiscontinuousConvMode = DISABLE;        /* Parameter discarded because sequencer is disabled */
+    hadc.Init.NbrOfDiscConversion = 1;                /* Parameter discarded because sequencer is disabled */
+    hadc.Init.ContinuousConvMode = DISABLE;           /* Continuous mode to have maximum conversion speed (no delay between conversions) */
+    hadc.Init.TrigType = ADC_INJECTED_SOFTWARE_TRIGT; /* The reference voltage uses an internal reference */
+    hadc.Init.Vref = ADC_VREF_INSIDE;
+    hadc.Init.AdcCkDiv = ADC_CLOCK_DIV32;
+    if (HAL_ADC_Init(&hadc) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    adc12b_in6_io_init();
+    ADC_InjectionConfTypeDef sConfigInjected = {0};
+    sConfigInjected.InjectedChannel = ADC_CHANNEL_6;
+    sConfigInjected.InjectedRank = ADC_INJECTED_RANK_1;
+    sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_15CYCLES;
+    sConfigInjected.InjectedOffset = 0;
+    sConfigInjected.InjectedNbrOfConversion = 1;
+    sConfigInjected.InjectedDiscontinuousConvMode = DISABLE;
+    sConfigInjected.AutoInjectedConv = DISABLE;
+
+    if (HAL_ADCEx_InjectedConfigChannel(&hadc, &sConfigInjected) != HAL_OK)
+    {
+        /* Channel Configuration Error */
+        Error_Handler();
+    }
+
+    recv_flag = 0;
+    HAL_ADCEx_InjectedStart_IT(&hadc);
+    LOG_I("start adc");
+    while (recv_flag == 0)
+        DELAY_US(100);
+
+    value = 6 * 1400 * adc_value / 4095;
+    LOG_I("battery:%d", value);
+    if (value < 3200)
+    {
+        LOG_I("twink red");
+        SetLedRed(LED_TWINK);
+    }
+    else if (io_read_pin(CHRG) != 0)
+    {
+        SetLedRed(LED_CLOSE);
+    }
+    if (value > 3950)
+        battery = 5;
+    else if (value > 3800)
+        battery = 4;
+    else if (value > 3600)
+        battery = 3;
+    else if (value > 3400)
+        battery = 2;
+    else
+        battery = 1;
+
+    HAL_ADC_DeInit(&hadc);
+}
 /**
  * @brief  This function is executed in case of error occurrence.
  * @retval None
@@ -309,4 +307,5 @@ void Error_Handler(void)
     /* User can add his own implementation to report the HAL error return state */
 
     /* USER CODE END Error_Handler_Debug */
+        LOG_I("Error_Handler");
 }
