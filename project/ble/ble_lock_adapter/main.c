@@ -467,6 +467,7 @@ static void gatt_manager_callback(enum gatt_evt_type type, union gatt_evt_u *evt
     case CLIENT_RECV_NOTIFICATION:
         //ls_uart_client_recv_ntf_ind(evt->client_recv_notify_indicate.handle, con_idx, evt->client_recv_notify_indicate.length, evt->client_recv_notify_indicate.value);
         LOG_I("svc dis notification, length = %d", evt->client_recv_notify_indicate.length);
+        gap_manager_disconnect(con_idx, 0x13);
         break;
     case CLIENT_PRIMARY_SVC_DIS_IND:
         if (!memcmp(evt->client_svc_disc_indicate.uuid, ls_svc_uuid_128, sizeof(ls_svc_uuid_128)))
